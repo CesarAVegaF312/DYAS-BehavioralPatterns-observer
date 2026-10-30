@@ -1,0 +1,44 @@
+# Sistema completo: servicio de configuración del POS + MySQL.
+#   cp .env.example .env
+#   docker compose up --build -d
+#   docker compose down -v      (apaga y borra los datos de MySQL)
+# Las variables con :? son obligatorias: si faltan en el .env, Compose se detiene con el mensaje indicado.
+name: pos-observer
+
+services:
+
+  app:
+    build: .
+    environment:
+      DB_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-pos}
+      DB_USUARIO: ${MYSQL_USER:?Defina MYSQL_USER (ver .env.example)}
+      DB_CLAVE: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD (ver .env.example)}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    # El healthcheck está definido en el Dockerfile (HEALTHCHECK).
+
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-pos}
+      MYSQL_USER: ${MYSQL_USER:?Defina MYSQL_USER (ver .env.example)}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Defina MYSQL_PASSWORD (ver .env.example)}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defina MYSQL_ROOT_PASSWORD (ver .env.example)}
+    # Solo accesible desde la misma máquina (127.0.0.1), para consultar con un cliente SQL.
+    ports:
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
+    volumes:
+      # Los scripts de esta carpeta se ejecutan solo la primera vez, cuando el volumen de datos está vacío.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - datos-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$${MYSQL_ROOT_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  datos-mysql:
